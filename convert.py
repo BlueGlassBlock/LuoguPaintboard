@@ -41,6 +41,8 @@ PALETTE = {
     (121, 85, 72): 31,
 }
 
+REVERSED_PALETTE = {v: k for k, v in PALETTE.items()}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", "-i", default="./src.jpg")
@@ -76,7 +78,7 @@ if __name__ == "__main__":
     palette_image.load()
 
     dst_img: Image.Image = src_img._new(
-        src_img.im.convert("P", 1, palette_image.im)
+        src_img.im.convert("P", 0, palette_image.im)
     )  # dst_img: Image.image["P"]
 
     if not fast:
