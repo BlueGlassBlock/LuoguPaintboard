@@ -8,12 +8,17 @@ import aiohttp
 import aiohttp.client_ws
 from loguru import logger
 
-WS_ADDRESS = "wss://ws.luogu.com.cn/ws"
-POST_ADDRESS = "https://www.luogu.com.cn/paintboard/paint?token={token}"
-GET_ADDRESS = "https://www.luogu.com.cn/paintboard/board"
+LUOGU = "https://www.luogu.com.cn"
+LUOGU_WS = "wss://ws.luogu.com.cn"
+
+WS_ADDRESS = f"{LUOGU_WS}/ws"
+POST_ADDRESS = f"{LUOGU}/paintboard/paint?token={{token}}"
+GET_ADDRESS = f"{LUOGU}/paintboard/board"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Firefox/96.0"
 )
+
+INTERVAL = 0.2
 
 
 async def write(
@@ -27,11 +32,16 @@ async def write(
     while True:
         if error:
             (x, y), c = error.popitem()
-            resp = await session.post(ADDR, data={"x": x, "y": y, "color": c})
-            logger.info(f"Posted to {(x, y)} with color {c}. Code: {resp.status}")
-            await asyncio.sleep(30.0)
+            resp = await session.post(
+                ADDR, data={"x": x, "y": y, "color": data[(x, y)]}
+            )
+            logger.info(
+                f"Posted to {(x, y)} with color {data[(x, y)]}. Code: {resp.status}"
+            )
+            if resp.status == 200:
+                await asyncio.sleep(INTERVAL)
         else:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
 
 async def update(
@@ -57,9 +67,9 @@ async def update(
             f"\nError: {len(error)} points\nCorrect: {len(data) - len(error)} points\nPercentage: {(len(data) - len(error)) / len(data) :.2%}"
         )
 
-        logger.info("Scheduled update in 20s.")
+        logger.info("Scheduled update in 10s.")
 
-        await asyncio.sleep(20.0)
+        await asyncio.sleep(10.0)
 
 
 async def ws_update(
@@ -68,21 +78,32 @@ async def ws_update(
     error: Dict[Tuple[int, int], int],
     data: Dict[Tuple[int, int], int],
 ):
-    async with session.ws_connect(WS_ADDRESS) as ws_session:
-        logger.info("Websocket online.")
+    while True:
+        try:
+            async with session.ws_connect(WS_ADDRESS) as ws_session:
+                logger.info("Websocket online.")
 
-        await ws_session.send_json(
-            {"type": "join_channel", "channel": "paintboard", "channel_param": ""}
-        )
+                await ws_session.send_json(
+                    {
+                        "type": "join_channel",
+                        "channel": "paintboard",
+                        "channel_param": "",
+                    }
+                )
 
-        while True:
-            json_data = await ws_session.receive_json()
-            if json_data["type"] == "paintboard_update":
-                x, y, c = json_data["x"], json_data["y"], json_data["color"]
-                current[(x, y)] = c
-                if (x, y) in data:
-                    if c != data[(x, y)]:
-                        error[(x, y)] = c
+                while True:
+                    json_data = await ws_session.receive_json()
+                    if json_data["type"] == "paintboard_update":
+                        x, y, c = json_data["x"], json_data["y"], json_data["color"]
+                        current[(x, y)] = c
+                        if (x, y) in data:
+                            if c != data[(x, y)]:
+                                error[(x, y)] = c
+                            else:
+                                if (x, y) in error:
+                                    del error[(x, y)]
+        except Exception:
+            pass
 
 
 async def main(data: Dict[Tuple[int, int], int], tokens: List[str]):
